@@ -1,0 +1,57 @@
+{
+  "name": "rock-paper-scissors-fhe-game",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "World's first fully homomorphic encrypted Rock Paper Scissors game built with Zama's FHEVM technology",
+  "keywords": ["fhe", "zama", "fhevm", "blockchain", "gaming", "privacy", "ethereum", "react", "vite"],
+  "homepage": "https://github.com/your-username/rock-paper-scissors-fhe-game#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/rock-paper-scissors-fhe-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/rock-paper-scissors-fhe-game/issues"
+  },
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "vercel-build": "vite build",
+    "test": "npm run hardhat:test",
+    "test:contracts": "npm run hardhat:test",
+    "hardhat:setup": "cd hardhat && npm run setup",
+    "hardhat:compile": "cd hardhat && npm run compile",
+    "hardhat:test": "cd hardhat && npm test",
+    "hardhat:coverage": "cd hardhat && npm run coverage",
+    "hardhat:deploy": "cd hardhat && npm run deploy",
+    "hardhat:verify": "cd hardhat && npm run verify",
+    "hardhat:clean": "cd hardhat && npm run clean",
+    "hardhat:lint": "cd hardhat && npm run lint",
+    "hardhat:typechain": "cd hardhat && npm run typechain"
+  },
+  "dependencies": {
+    "ethers": "^6.15.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.22",
+    "globals": "^16.4.0",
+    "vite": "^5.4.0",
+    "hardhat": "^2.19.0",
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0"
+  }
+}
