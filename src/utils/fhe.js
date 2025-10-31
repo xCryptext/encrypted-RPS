@@ -1,10 +1,121 @@
 // FHE Utility functions using Zama Relayer SDK
 import { ethers } from 'ethers';
 
-// NOTE: Vite supports HTTP(S) imports and dynamic imports
-// We can use dynamic import directly as Vite handles this properly
+// SDK CDN URL
+// Use proxy path in development to avoid CORS issues
+const SDK_URL = import.meta.env.DEV 
+  ? '/cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js'
+  : 'https://cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js';
+let sdkLoaded = false;
+let sdkLoadPromise = null;
 
 let fheInstance = null;
+
+/**
+ * Load the FHE SDK from CDN
+ * Uses Vite proxy in development to avoid CORS issues
+ * Falls back to script tag method if dynamic import fails
+ */
+async function loadSDK() {
+  // If already loaded, return immediately
+  if (sdkLoaded && window.RelayerSDK) {
+    return window.RelayerSDK;
+  }
+
+  // If currently loading, wait for that promise
+  if (sdkLoadPromise) {
+    return sdkLoadPromise;
+  }
+
+  // Method 1: Try dynamic import (works with Vite proxy in dev, or if CDN has CORS headers in prod)
+  const tryDynamicImport = async () => {
+    try {
+      // Use @vite-ignore to allow external URL imports
+      const module = await import(/* @vite-ignore */ SDK_URL);
+      window.RelayerSDK = module;
+      sdkLoaded = true;
+      return module;
+    } catch (err) {
+      console.warn('Dynamic import failed, trying script tag method:', err.message);
+      throw err;
+    }
+  };
+
+  // Method 2: Use script tag as fallback (for production if CORS is still an issue)
+  const tryScriptTag = () => {
+    return new Promise((resolve, reject) => {
+      // Check if script already exists
+      const existingScript = document.querySelector(`script[src="${SDK_URL}"]`);
+      if (existingScript) {
+        // Wait for SDK to be available
+        let attempts = 0;
+        const checkInterval = setInterval(() => {
+          attempts++;
+          const sdk = window.RelayerSDK || (window.fhevm && window.fhevm.initSDK ? window.fhevm : null);
+          if (sdk) {
+            clearInterval(checkInterval);
+            window.RelayerSDK = sdk;
+            sdkLoaded = true;
+            resolve(sdk);
+          } else if (attempts >= 100) {
+            clearInterval(checkInterval);
+            reject(new Error('SDK did not load within timeout'));
+          }
+        }, 100);
+        return;
+      }
+
+      // Create script element
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = SDK_URL;
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+
+      // Handle successful load
+      script.onload = () => {
+        // Give the module time to execute
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds max wait
+        
+        const checkSDK = setInterval(() => {
+          attempts++;
+          
+          // Check various possible SDK locations
+          const sdk = window.RelayerSDK || window.fhevm || window.FHE || null;
+          
+          if (sdk) {
+            clearInterval(checkSDK);
+            window.RelayerSDK = sdk;
+            sdkLoaded = true;
+            resolve(sdk);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkSDK);
+            reject(new Error('SDK loaded but exports not found'));
+          }
+        }, 100);
+      };
+
+      // Handle load errors
+      script.onerror = (error) => {
+        script.remove();
+        reject(new Error(`Failed to load FHE SDK script: ${error.message || 'Unknown error'}`));
+      };
+
+      // Append to document head
+      document.head.appendChild(script);
+    });
+  };
+
+  // Try dynamic import first (should work with Vite proxy)
+  // Fall back to script tag if that fails
+  sdkLoadPromise = tryDynamicImport().catch((err) => {
+    console.warn('Falling back to script tag method:', err.message);
+    return tryScriptTag();
+  });
+
+  return sdkLoadPromise;
+}
 
 export async function initializeFheInstance() {
   // Check if ethereum is available (prevents mobile crashes)
@@ -12,11 +123,73 @@ export async function initializeFheInstance() {
     throw new Error('Ethereum provider not found. Please install MetaMask or connect a wallet.');
   }
 
-  try {
-    // Load SDK from CDN (0.2.0) - Vite supports this
-    const sdk = await import('https://cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js');
+  // Patch fetch to proxy WASM requests in development
+  const originalFetch = window.fetch;
+  const wasmProxyEnabled = import.meta.env.DEV;
+  
+  if (wasmProxyEnabled) {
+    window.fetch = function(input, init) {
+      // Handle both string URLs and Request objects
+      let url;
+      if (typeof input === 'string') {
+        url = input;
+      } else if (input instanceof Request) {
+        url = input.url;
+      } else {
+        url = input?.url || input?.href || '';
+      }
+      
+      // Intercept WASM requests to Zama CDN and proxy them
+      if (url && url.includes('cdn.zama.ai') && (url.endsWith('.wasm') || url.includes('.wasm'))) {
+        const proxiedUrl = url.replace('https://cdn.zama.ai', '/cdn.zama.ai');
+        console.log(`Proxying WASM request: ${url} -> ${proxiedUrl}`);
+        
+        // If input is a Request object, create a new one with the proxied URL
+        if (input instanceof Request) {
+          return originalFetch(new Request(proxiedUrl, {
+            method: input.method,
+            headers: input.headers,
+            body: input.body,
+            mode: input.mode,
+            credentials: input.credentials,
+            cache: input.cache,
+            redirect: input.redirect,
+            referrer: input.referrer,
+            integrity: input.integrity,
+            ...init
+          }), init);
+        }
+        
+        return originalFetch(proxiedUrl, init);
+      }
+      
+      return originalFetch(input, init);
+    };
+  }
 
-    const { initSDK, createInstance, SepoliaConfig } = sdk;
+  try {
+    // Load SDK from CDN using script tag (avoids CORS issues)
+    const sdk = await loadSDK();
+
+    // The SDK should export initSDK, createInstance, and SepoliaConfig
+    // If it's a module, these will be on the default export or named exports
+    let initSDK, createInstance, SepoliaConfig;
+
+    if (sdk.default) {
+      // ES module with default export
+      ({ initSDK, createInstance, SepoliaConfig } = sdk.default);
+    } else if (sdk.initSDK) {
+      // Direct named exports
+      ({ initSDK, createInstance, SepoliaConfig } = sdk);
+    } else {
+      // Try accessing as global
+      const globalSDK = window.RelayerSDK || window.fhevm || window;
+      if (globalSDK.initSDK) {
+        ({ initSDK, createInstance, SepoliaConfig } = globalSDK);
+      } else {
+        throw new Error('SDK structure not recognized. Expected initSDK, createInstance, and SepoliaConfig exports.');
+      }
+    }
 
     // Initialize SDK (loads WASM)
     await initSDK();
@@ -31,17 +204,30 @@ export async function initializeFheInstance() {
     fheInstance = await createInstance(config);
 
     console.log('FHE Instance initialized successfully with SepoliaConfig');
+    
+    // Restore original fetch after SDK initialization
+    if (wasmProxyEnabled && originalFetch) {
+      window.fetch = originalFetch;
+    }
+    
     return fheInstance;
   } catch (err) {
+    // Restore original fetch on error
+    if (wasmProxyEnabled && originalFetch) {
+      window.fetch = originalFetch;
+    }
+    
     console.error('FHEVM instance creation failed:', err);
     
     // More specific error messages
-    if (err.message?.includes('Failed to fetch')) {
-      throw new Error('Failed to load FHE SDK. Please check your internet connection.');
+    if (err.message?.includes('Failed to fetch') || err.message?.includes('Failed to load')) {
+      throw new Error('Failed to load FHE SDK. Please check your internet connection and try refreshing the page.');
     } else if (err.message?.includes('NetworkError')) {
       throw new Error('Network error while loading FHE SDK. Please try again.');
     } else if (err.message?.includes('WASM')) {
       throw new Error('Failed to load FHE WASM module. Please refresh the page.');
+    } else if (err.message?.includes('CORS')) {
+      throw new Error('CORS error loading SDK. This should be resolved by using script tag loading.');
     }
     
     throw new Error(`FHE initialization failed: ${err.message || 'Unknown error'}`);
