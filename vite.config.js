@@ -22,13 +22,10 @@ export default defineConfig({
     port: 3000,
     open: true,
     headers: {
-      // Required for WASM/SharedArrayBuffer support
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      // Add CORS headers for local development
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      // Try less restrictive COOP for better compatibility
+      // 'Cross-Origin-Opener-Policy': 'same-origin',
+      // 'Cross-Origin-Embedder-Policy': 'require-corp',
+      // Note: COOP/COEP may break other resources, so we'll try without them first
     },
     proxy: {
       // Proxy CDN requests to avoid CORS issues
@@ -42,6 +39,16 @@ export default defineConfig({
             // Ensure WASM files are handled correctly
             if (req.url.endsWith('.wasm')) {
               proxyReq.setHeader('Accept', 'application/wasm');
+            }
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            // Add CORS headers to proxied responses
+            proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+            proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+            proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+            // For WASM files, add specific headers
+            if (req.url.endsWith('.wasm')) {
+              proxyRes.headers['Content-Type'] = 'application/wasm';
             }
           });
         }

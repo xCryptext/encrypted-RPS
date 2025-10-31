@@ -123,11 +123,11 @@ export async function initializeFheInstance() {
     throw new Error('Ethereum provider not found. Please install MetaMask or connect a wallet.');
   }
 
-  // Patch fetch to proxy WASM requests in development
+  // Patch fetch to proxy ALL Zama CDN requests in development (WASM, JS, etc.)
   const originalFetch = window.fetch;
-  const wasmProxyEnabled = import.meta.env.DEV;
+  const proxyEnabled = import.meta.env.DEV;
   
-  if (wasmProxyEnabled) {
+  if (proxyEnabled) {
     window.fetch = function(input, init) {
       // Handle both string URLs and Request objects
       let url;
@@ -139,10 +139,11 @@ export async function initializeFheInstance() {
         url = input?.url || input?.href || '';
       }
       
-      // Intercept WASM requests to Zama CDN and proxy them
-      if (url && url.includes('cdn.zama.ai') && (url.endsWith('.wasm') || url.includes('.wasm'))) {
+      // Intercept ALL requests to Zama CDN and proxy them (WASM, JS, and other resources)
+      // Only proxy absolute HTTPS URLs, not already-proxied relative URLs
+      if (url && url.includes('cdn.zama.ai') && url.startsWith('https://')) {
         const proxiedUrl = url.replace('https://cdn.zama.ai', '/cdn.zama.ai');
-        console.log(`Proxying WASM request: ${url} -> ${proxiedUrl}`);
+        console.log(`Proxying CDN request: ${url} -> ${proxiedUrl}`);
         
         // If input is a Request object, create a new one with the proxied URL
         if (input instanceof Request) {
@@ -205,17 +206,14 @@ export async function initializeFheInstance() {
 
     console.log('FHE Instance initialized successfully with SepoliaConfig');
     
-    // Restore original fetch after SDK initialization
-    if (wasmProxyEnabled && originalFetch) {
-      window.fetch = originalFetch;
-    }
+    // Keep fetch patched for the entire session - SDK may need more files later
+    // Only restore in production or if explicitly needed
+    // Don't restore fetch - SDK may load additional resources asynchronously
     
     return fheInstance;
   } catch (err) {
-    // Restore original fetch on error
-    if (wasmProxyEnabled && originalFetch) {
-      window.fetch = originalFetch;
-    }
+    // Keep fetch patched even on error - might be needed for retries
+    // Only restore if we're sure initialization has completely failed
     
     console.error('FHEVM instance creation failed:', err);
     
