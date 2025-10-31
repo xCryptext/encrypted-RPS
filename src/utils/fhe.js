@@ -2,10 +2,9 @@
 import { ethers } from 'ethers';
 
 // SDK CDN URL
-// Use proxy path in development to avoid CORS issues
-const SDK_URL = import.meta.env.DEV 
-  ? '/cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js'
-  : 'https://cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js';
+// Use proxy path in both dev and production to avoid CORS issues
+// Vercel rewrite handles the proxy in production
+const SDK_URL = '/cdn.zama.ai/relayer-sdk-js/0.2.0/relayer-sdk-js.js';
 let sdkLoaded = false;
 let sdkLoadPromise = null;
 
@@ -123,9 +122,10 @@ export async function initializeFheInstance() {
     throw new Error('Ethereum provider not found. Please install MetaMask or connect a wallet.');
   }
 
-  // Patch fetch to proxy ALL Zama CDN requests in development (WASM, JS, etc.)
+  // Patch fetch to proxy ALL Zama CDN requests (WASM, JS, etc.)
+  // Works in both development (Vite proxy) and production (Vercel rewrite)
   const originalFetch = window.fetch;
-  const proxyEnabled = import.meta.env.DEV;
+  const proxyEnabled = true; // Always enabled since we use proxy in both dev and prod
   
   if (proxyEnabled) {
     window.fetch = function(input, init) {
